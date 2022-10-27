@@ -177,8 +177,9 @@ def main(args):
             src_sents = load_file(src_file)
             pred_sents = load_file(pred_file)
             print(src_file, pred_file)
-            print(scorer.score(src_sents, pred_sents,
-                                batch_size=args.batch_size))
+            score = scorer.score(src_sents, pred_sents,
+                                  batch_size=args.batch_size)
+            print(f'Absolute: {score}  Normalized: {score/len(pred_sents):.4g}')
     
 
 def get_parser():
