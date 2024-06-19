@@ -24,3 +24,4 @@ transformers==4.16.2
 typing-extensions==4.1.1
 urllib3==1.26.8
 zipp==3.7.0
+sentencepiece>=0.2.0
