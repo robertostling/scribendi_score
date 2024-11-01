@@ -1,10 +1,10 @@
 import os.path
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from fuzzywuzzy.fuzz import token_sort_ratio
 import torch
 import argparse
 from typing import List, Dict, Tuple, Optional
+
 
 class ScribendiScore:
     def __init__(self, 
@@ -17,32 +17,61 @@ class ScribendiScore:
         self.model_id = model_id
         self.no_cuda = no_cuda
         self.tokenizer, self.model = self.load_model(model_id, access_token)
-    
+
     def score(self,
-        src_sents: List[str],
-        pred_sents: List[str],
-        batch_size: int=32,
-        verbose: bool=False
-    ) -> int:
-        src_sents, pred_sents, count = self.remove_eq_sents(src_sents, pred_sents)
-        src_ppls = self.ppl(src_sents, batch_size)
-        pred_ppls = self.ppl(pred_sents, batch_size)
+              src_essays: Dict[str, List[str]],
+              pred_essays: Dict[str, List[str]],
+              batch_size: int = 32,
+              verbose: bool = False
+              ) -> int:
         score = 0
-        score2freq = {-1:0, 0:count, 1:0}
-        for i, (src, pred) in enumerate(zip(src_sents, pred_sents)):
-            if src_ppls[i] <= pred_ppls[i]:
-                score += -1
-                score2freq[-1] += 1
-                continue
-            tsr = self.token_sort_ratio(src, pred)
-            ldr = self.levenshtein_distance_ratio(src, pred)
-            if max(tsr, ldr) >= self.threshold:
-                score += 1
-                score2freq[1] += 1
-            else:
-                score += -1
-                score2freq[-1] += 1
-        print('score2freq ->', score2freq, ', score ->', score2freq[1] - score2freq[-1])
+        score2freq = {-1: 0, 0: 0, 1: 0}  # Frequency tracker for scores
+
+        # Collect essays into batches
+        essay_ids = list(src_essays.keys())
+        for batch_start in range(0, len(essay_ids), batch_size):
+            batch_ids = essay_ids[batch_start:batch_start + batch_size]
+
+            # Collect sentences for the current batch
+            src_sents = [src_essays[essay_id][0] for essay_id in batch_ids if essay_id in src_essays]
+            pred_sents = [pred_essays[essay_id][0] for essay_id in batch_ids if essay_id in pred_essays]
+
+            # Compute perplexities for both source and prediction batches
+            src_ppls = self.ppl(src_sents, batch_size)
+            pred_ppls = self.ppl(pred_sents, batch_size)
+
+            # Score each essay in the batch
+            for i, essay_id in enumerate(batch_ids):
+                src = src_sents[i]
+                pred = pred_sents[i]
+
+                # Skip if identical
+                if src == pred:
+                    score2freq[0] += 1
+                    continue
+
+                # Score essay based on perplexity and similarity metrics
+                if src_ppls[i] <= pred_ppls[i]:
+                    essay_score = -1
+                    score2freq[-1] += 1
+                else:
+                    tsr = self.token_sort_ratio(src, pred)
+                    ldr = self.levenshtein_distance_ratio(src, pred)
+                    if max(tsr, ldr) >= self.threshold:
+                        essay_score = 1
+                        score2freq[1] += 1
+                    else:
+                        essay_score = -1
+                        score2freq[-1] += 1
+
+                score += essay_score
+                if verbose:
+                    print(f"Essay ID: {essay_id} -> Essay score: {essay_score}")
+
+        # Print overall score frequency and normalized score
+        if verbose:
+            print('Overall score2freq ->', score2freq)
+            print('Overall score ->', score2freq[1] - score2freq[-1])
         return score
                 
     def ppl(self, sents: List[str], batch_size: int=32) -> List[int]:
@@ -158,6 +187,21 @@ def load_file(file_path: str) -> List[str]:
             sentences.append(sent)
     return sentences
 
+def load_multi_gec_file(file_path: str) -> Dict[str, List[str]]:
+    essays = {}
+    current_essay_id = None
+    with open(file_path) as fp:
+        for line in fp:
+            line = line.strip()
+            if not line: continue
+            if line.startswith("### essay_id = "):
+                current_essay_id = line.split(" = ")[1]
+                essays[current_essay_id] = []
+            elif current_essay_id:
+                essays[current_essay_id].append(line)
+    return essays
+
+
 def main(args):
     if args.examples:
         # Examples using sentences of Table 1 in the paper.
@@ -199,12 +243,12 @@ def main(args):
             src_files = src_files * len(pred_files)
         assert len(src_files) == len(pred_files)
         for src_file, pred_file in zip(src_files, pred_files):
-            src_sents = load_file(src_file)
-            pred_sents = load_file(pred_file)
+            src_essays = load_multi_gec_file(src_file)
+            pred_essays = load_multi_gec_file(pred_file)
             print(src_file, pred_file)
-            score = scorer.score(src_sents, pred_sents,
-                                  batch_size=args.batch_size)
-            print(f'Absolute: {score}  Normalized: {score/len(pred_sents):.4g}')
+            score = scorer.score(src_essays, pred_essays,
+                                  batch_size=args.batch_size, verbose=args.verbose)
+            print(f'Absolute: {score}  Normalized: {score/len(pred_essays):.4g}')
     
 
 def get_parser():
@@ -213,10 +257,11 @@ def get_parser():
     parser.add_argument('--pred')
     parser.add_argument('--examples', action='store_true')
     parser.add_argument('--no_cuda', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
     parser.add_argument('--access_token', default=None)
     parser.add_argument('--threshold', type=float, default=0.8)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=16)
     args = parser.parse_args()
     return args
 
