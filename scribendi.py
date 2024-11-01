@@ -4,18 +4,19 @@ from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from fuzzywuzzy.fuzz import token_sort_ratio
 import torch
 import argparse
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 class ScribendiScore:
     def __init__(self, 
         threshold: float=0.8,
         model_id: str='gpt2',
-        no_cuda: bool=False
+        no_cuda: bool=False,
+        access_token: Optional[str]=None,
     ) -> None:
         self.threshold = threshold
         self.model_id = model_id
         self.no_cuda = no_cuda
-        self.tokenizer, self.model = self.load_model(model_id)
+        self.tokenizer, self.model = self.load_model(model_id, access_token)
     
     def score(self,
         src_sents: List[str],
@@ -76,7 +77,7 @@ class ScribendiScore:
     @staticmethod
     def token_sort_ratio(src: str, pred: str) -> float:
         return token_sort_ratio(src, pred) / 100
-    
+
     @staticmethod
     def levenshtein_distance_ratio(src: str, pred: str) -> float:
         len_src = len(src)
@@ -113,17 +114,26 @@ class ScribendiScore:
 #            model.to('cuda')
 #        return tokenizer, model
 
-def load_model(self, model_id: str):
+    def load_model(
+            self,
+            model_id: str,
+            access_token: Optional[str]
+    ):
         local=os.path.exists(model_id)
-        tokenizer = AutoTokenizer.from_pretrained(model_id,
-                local_files_only=local)
-        model = AutoModelForCausalLM.from_pretrained(model_id,
-                local_files_only=local)
+        print('Access token:', access_token)
+        tokenizer = AutoTokenizer.from_pretrained(
+                model_id,
+                local_files_only=local,
+                token=access_token)
+        model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                local_files_only=local,
+                token=access_token)
         tokenizer.pad_token = tokenizer.eos_token
         if not self.no_cuda:
             model.to('cuda')
         return tokenizer, model
-        
+
     @staticmethod
     def remove_eq_sents(
         src_sents: List[str],
@@ -180,7 +190,8 @@ def main(args):
         scorer = ScribendiScore(
             model_id=args.model_id,
             threshold=args.threshold,
-            no_cuda=args.no_cuda
+            no_cuda=args.no_cuda,
+            access_token=args.access_token
         )
         src_files = args.src.split(':')
         pred_files = args.pred.split(':')
@@ -202,7 +213,8 @@ def get_parser():
     parser.add_argument('--pred')
     parser.add_argument('--examples', action='store_true')
     parser.add_argument('--no_cuda', action='store_true')
-    parser.add_argument('--model_id', default='gpt2')
+    parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
+    parser.add_argument('--access_token', default=None)
     parser.add_argument('--threshold', type=float, default=0.8)
     parser.add_argument('--batch_size', type=int, default=32)
     args = parser.parse_args()

@@ -1,5 +1,36 @@
 # Scribendi Score
 
+## MultiGEC-2025
+
+This is a version of Goto Takumi's reimplementation of the
+[Scribendi score](https://github.com/gotutiyan/scribendi_score), adapted for
+the MultiGEC-2025 shared task.
+
+The default model for scoring is `meta-llama/Llama-3.1-8B`, which in
+preliminary evaluations has shown to produce scores that are not significantly
+biased towards text produced by the same model. We encourage shared task
+participants to use this during system development.
+
+Note that you need to log into your HuggingFace account and accept the
+conditions for accessing this model. Then
+[create an access token](https://huggingface.co/docs/hub/en/security-tokens)
+with (at least) read access to `meta-llama/Llama-3.1-8B`, and pass it to the
+`scribendi.py` script.
+
+## Usage example
+
+To score the manually corrected version (simulating a very good GEC system!)
+from the dev set of SOMELANGUAGE, you can use the following command:
+
+```
+     python3 scribendi.py \
+        --src ../multigec-2025-participants/... \
+        --pred .../multigec-2025-participants/... \
+        --access_token your_access_token
+```
+
+## Original README
+
 This an unofficial repository that reproduces Scribendi Score, proposed in the following paper.
 
 ```
