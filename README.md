@@ -20,14 +20,17 @@ with (at least) read access to `meta-llama/Llama-3.1-8B`, and pass it to the
 ## Usage example
 
 To score the manually corrected version (simulating a very good GEC system!)
-from the dev set of SOMELANGUAGE, you can use the following command:
+from the dev set of German, you can use the following command:
 
 ```
      python3 scribendi.py \
-        --src ../multigec-2025-participants/... \
-        --pred .../multigec-2025-participants/... \
+        --src ../multigec-2025-participants/german/Merlin/de-merlin-orig-dev.md  \
+        --pred ../multigec-2025-participants/german/Merlin/de-merlin-ref1-dev.md  \
         --access_token your_access_token
 ```
+
+Note that you will need quite a bit of GPU memory for the default model,
+it has been verified to work with an A100 GPU.
 
 ## Original README
 
