@@ -156,6 +156,7 @@ class ScribendiScore:
                 token=access_token)
         model = AutoModelForCausalLM.from_pretrained(
                 model_id,
+                torch_dtype = torch.bfloat16,
                 local_files_only=local,
                 token=access_token)
         tokenizer.pad_token = tokenizer.eos_token
