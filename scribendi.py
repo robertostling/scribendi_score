@@ -21,7 +21,7 @@ class ScribendiScore:
     def score(self,
               src_essays: Dict[str, List[str]],
               pred_essays: Dict[str, List[str]],
-              batch_size: int = 32,
+              batch_size: int = 4,
               verbose: bool = False
               ) -> int:
         score = 0
@@ -74,7 +74,7 @@ class ScribendiScore:
             print('Overall score ->', score2freq[1] - score2freq[-1])
         return score
                 
-    def ppl(self, sents: List[str], batch_size: int=32) -> List[int]:
+    def ppl(self, sents: List[str], batch_size: int=4) -> List[int]:
         ppls = []
         sents = [self.tokenizer.bos_token + sent for sent in sents]
         for i in range(len(sents)//batch_size+1):
@@ -188,33 +188,6 @@ def load_multi_gec_file(file_path: str) -> Dict[str, List[str]]:
 
 
 def main(args):
-    if args.examples:
-        # Examples using sentences of Table 1 in the paper.
-        scorer = ScribendiScore(
-            model_id=args.model_id,
-            threshold=args.threshold,
-            no_cuda=args.no_cuda
-        )
-        src = ["Once the test is done , whether the results should be open to his or her relatives has caused social extensive controversy."]
-        pred = ["Once the test is done , whether the results should be open to his or her relatives has caused extensive social controversy."]
-        print('src:', src)
-        print('pred:', pred)
-        print('ppl of src:', scorer.ppl(src)) # [198.90069580078125] Note: Cannot be reproduced
-        print('ppl of pred:', scorer.ppl(pred)) # [119.57299041748047] Note: Cannot be reproduced
-        print('levenshtein distance ratio:', scorer.levenshtein_distance_ratio(src[0], pred[0])) # 0.94308
-        print('token sort ratio:', scorer.token_sort_ratio(src[0], pred[0])) # 1.0
-        print('scribendi score:', scorer.score(src, pred)) # 1
-
-        src = ["We can not let it go ."]
-        pred = ["We cannot let it go ."]
-        print('src:', src)
-        print('pred:', pred)
-        print('ppl of src:', scorer.ppl(src)) # [110.27735900878906] Note: Cannot be reproduced
-        print('ppl of pred:', scorer.ppl(pred)) # [144.53514099121094] Note: Cannot be reproduced
-        print('levenshtein distance ratio:', scorer.levenshtein_distance_ratio(src[0], pred[0])) # 0.9767
-        print('token sort ratio:', scorer.token_sort_ratio(src[0], pred[0])) # 0.82
-        print('scribendi score:', scorer.score(src, pred)) # -1
-
     if args.src is not None and args.pred is not None:
         scorer = ScribendiScore(
             model_id=args.model_id,
@@ -231,8 +204,7 @@ def main(args):
             src_essays = load_multi_gec_file(src_file)
             pred_essays = load_multi_gec_file(pred_file)
             print(src_file, pred_file)
-            score = scorer.score(src_essays, pred_essays,
-                                  batch_size=args.batch_size, verbose=args.verbose)
+            score = scorer.score(src_essays, pred_essays, batch_size=args.batch_size, verbose=args.verbose)
             print(f'Absolute: {score}  Normalized: {score/len(pred_essays):.4g}')
     
 
@@ -240,13 +212,12 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--src')
     parser.add_argument('--pred')
-    parser.add_argument('--examples', action='store_true')
     parser.add_argument('--no_cuda', action='store_true')
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
     parser.add_argument('--access_token', default=None)
     parser.add_argument('--threshold', type=float, default=0.8)
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=4)
     args = parser.parse_args()
     return args
 
