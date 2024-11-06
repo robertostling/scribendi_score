@@ -210,12 +210,27 @@ def extract_lang_corpus(src_file):
 
 
 def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, verbose,split="dev"):
+    def load_existing_scores(csv_path):
+        """Load existing scores into a set of tuples (team_name, language, corpus)."""
+        existing_scores = set()
+        if os.path.exists(csv_path):
+            with open(csv_path, 'r') as csvfile:
+                csv_reader = csv.reader(csvfile)
+                next(csv_reader, None)  # Skip the header
+                for row in csv_reader:
+                    if len(row) >= 3:
+                        team_name, language, corpus = row[:3]
+                        existing_scores.add((team_name, language, corpus))
+        return existing_scores
 
+    csv_path = 'scorer_scribendi.csv'
+    existing_scores = load_existing_scores(csv_path)
 
-    with open('scorer_scribendi.csv', 'a', newline='') as csvfile:
+    with open(csv_path, 'a', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-        if os.stat('scorer_scribendi.csv').st_size == 0:
+        if os.stat(csv_path).st_size == 0:
             csv_writer.writerow(['team_name', 'language', 'corpus', 'normalized_score'])
+
         for ref_file in os.listdir(ref_dir):
             if "orig" in ref_file and split in ref_file and ".tmp" in ref_file:
                 base_name = ref_file.replace("-orig-dev.tmp", "")
@@ -224,33 +239,40 @@ def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, ver
                     f"{base_name}-hypo-{split}.tmp",
                     f"{base_name}-fluency-hypo1-{split}.tmp"
                 ]
-                pred_file = None
-                for pattern in patterns:
-                    potential_path = os.path.join(res_dir, pattern)
-                    if os.path.exists(potential_path):
-                        pred_file = potential_path
+
+                # Find the first existing prediction file
+                pred_file = next((os.path.join(res_dir, pattern) for pattern in patterns if
+                                  os.path.exists(os.path.join(res_dir, pattern))), None)
 
                 ref_path = os.path.join(ref_dir, ref_file)
                 if pred_file:
+                    # Extract language and corpus
+                    language, corpus = extract_lang_corpus(ref_path)
+
+                    # Check if this entry already exists in the CSV
+                    if (team_name, language, corpus) in existing_scores:
+                        print(f"Skipping {ref_path} and {pred_file} as it is already scored.")
+                        continue
+
+                    # Load the essays and run the scorer
                     print(f"Running scorer on pair: {ref_path} and {pred_file}")
                     src_essays = load_multi_gec_file(ref_path)
                     pred_essays = load_multi_gec_file(pred_file)
 
-                    language, corpus = extract_lang_corpus(ref_path)
-                    if "icel2ec" in ref_path:
-                        batch_size = 1
-                    else:
-                        batch_size=4
+                    batch_size = 1 if "icel2ec" in ref_path else 4
                     try:
                         score = scorer.score(src_essays, pred_essays, batch_size=batch_size, verbose=verbose)
                     except Exception as e:
-                        print(e,)
+                        print(f"Error scoring {ref_path} and {pred_file}: {e}")
                         continue
+
+                    # Calculate normalized score and write to CSV
                     normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
-                    print(f'Absolute: {score}  Normalized: {score / len(pred_essays):.4g}')
+                    print(f'Absolute: {score}  Normalized: {normalized_score:.4g}')
                     csv_writer.writerow([team_name, language, corpus, f'{normalized_score:.4g}'])
+                    existing_scores.add((team_name, language, corpus))  # Add to set to avoid duplicate processing
                 else:
-                    print(f"Warning: Prediction file {pred_file} does not exist for {ref_file}")
+                    print(f"Warning: Prediction file for {ref_file} does not exist in expected formats.")
 
 
 def main(args):
