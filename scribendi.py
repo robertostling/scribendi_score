@@ -4,7 +4,7 @@ from fuzzywuzzy.fuzz import token_sort_ratio
 import torch
 import argparse
 from typing import List, Dict, Tuple, Optional
-
+import csv
 
 class ScribendiScore:
     def __init__(self, 
@@ -209,44 +209,52 @@ def extract_lang_corpus(src_file):
     return None, None
 
 
-def main(args):
-    # Open the CSV file in append mode
+def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, verbose,split="dev"):
     with open('scorer_scribendi.csv', 'a', newline='') as csvfile:
-        # Define the CSV writer
         csv_writer = csv.writer(csvfile)
-
-        # Write the header if the file is empty
         if os.stat('scorer_scribendi.csv').st_size == 0:
             csv_writer.writerow(['team_name', 'language', 'corpus', 'normalized_score'])
 
-        # Initialize the scorer if src and pred files are provided
-        if args.src is not None and args.pred is not None:
-            scorer = ScribendiScore(
-                model_id=args.model_id,
-                threshold=args.threshold,
-                no_cuda=args.no_cuda,
-                access_token=args.access_token
-            )
-            src_files = args.src.split(':')
-            pred_files = args.pred.split(':')
-            if len(src_files) == 1 and len(pred_files) > 1:
-                src_files = src_files * len(pred_files)
-            assert len(src_files) == len(pred_files)
+        for ref_file in os.listdir(ref_dir):
+            if "orig" in ref_file and split in ref_file:
+                base_name = ref_file.replace("-orig-dev.tmp", "")
+                pred_file = os.path.join(res_dir, f"{base_name}-hypo1-{split}.tmp")
+                if not os.path.exists(pred_file):
+                    pred_file= pred_file.replace("hypo1", "hypo")
+                    assert os.path.exists(pred_file)
+                ref_path = os.path.join(ref_dir, ref_file)
+                if os.path.isfile(pred_file):
+                    print(f"Running scorer on pair: {ref_path} and {pred_file}")
+                    src_essays = load_multi_gec_file(ref_path)
+                    pred_essays = load_multi_gec_file(pred_file)
 
-            for src_file, pred_file in zip(src_files, pred_files):
-                src_essays = load_multi_gec_file(src_file)
-                pred_essays = load_multi_gec_file(pred_file)
+                    language, corpus = extract_lang_corpus(ref_path)
+                    score = scorer.score(src_essays, pred_essays, batch_size=batch_size, verbose=verbose)
+                    normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
+                    csv_writer.writerow([team_name, language, corpus, f'{normalized_score:.4g}'])
+                else:
+                    print(f"Warning: Prediction file {pred_file} does not exist for {ref_file}")
 
-                # Extract language and corpus from src_file
-                language, corpus = extract_lang_corpus(src_file)
 
-                # Calculate score
-                score = scorer.score(src_essays, pred_essays, batch_size=args.batch_size, verbose=args.verbose)
-                normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
-                print(f'Absolute: {score}  Normalized: {normalized_score:.4g}')
+def main(args):
+    scorer = ScribendiScore(
+        model_id=args.model_id,
+        threshold=args.threshold,
+        no_cuda=args.no_cuda,
+        access_token=args.access_token
+    )
 
-                # Append the result to the CSV file
-                csv_writer.writerow([args.team_name, language, corpus, f'{normalized_score:.4g}'])
+    if os.path.isdir(args.src) and os.path.isdir(args.pred):
+        process_directory_pairs(args.src, args.pred, args.team_name, scorer, args.batch_size, args.verbose)
+    elif os.path.isfile(args.src) and os.path.isfile(args.pred):
+        src_file = args.src
+        pred_file = args.pred
+        src_essays = load_multi_gec_file(src_file)
+        pred_essays = load_multi_gec_file(pred_file)
+        print(src_file, pred_file)
+        score = scorer.score(src_essays, pred_essays, batch_size=args.batch_size, verbose=args.verbose)
+        print(src_file, pred_file)
+        print(f'Absolute: {score}  Normalized: {score/len(pred_essays):.4g}')
 
 
 def get_parser():
@@ -257,7 +265,7 @@ def get_parser():
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
     parser.add_argument('--access_token', default=None)
-    parser.add_argument('--team_name', default="team1")
+    parser.add_argument('--team_name', default='team1')
     parser.add_argument('--threshold', type=float, default=0.8)
     parser.add_argument('--batch_size', type=int, default=4)
     args = parser.parse_args()
