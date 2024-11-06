@@ -210,26 +210,42 @@ def extract_lang_corpus(src_file):
 
 
 def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, verbose,split="dev"):
+
+
     with open('scorer_scribendi.csv', 'a', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         if os.stat('scorer_scribendi.csv').st_size == 0:
             csv_writer.writerow(['team_name', 'language', 'corpus', 'normalized_score'])
-
         for ref_file in os.listdir(ref_dir):
-            if "orig" in ref_file and split in ref_file:
+            if "orig" in ref_file and split in ref_file and ".tmp" in ref_file:
                 base_name = ref_file.replace("-orig-dev.tmp", "")
-                pred_file = os.path.join(res_dir, f"{base_name}-hypo1-{split}.tmp")
-                if not os.path.exists(pred_file):
-                    pred_file= pred_file.replace("hypo1", "hypo")
-                    assert os.path.exists(pred_file)
+                patterns = [
+                    f"{base_name}-hypo1-{split}.tmp",
+                    f"{base_name}-hypo-{split}.tmp",
+                    f"{base_name}-fluency-hypo1-{split}.tmp"
+                ]
+                pred_file = None
+                for pattern in patterns:
+                    potential_path = os.path.join(res_dir, pattern)
+                    if os.path.exists(potential_path):
+                        pred_file = potential_path
+
                 ref_path = os.path.join(ref_dir, ref_file)
-                if os.path.isfile(pred_file):
+                if pred_file:
                     print(f"Running scorer on pair: {ref_path} and {pred_file}")
                     src_essays = load_multi_gec_file(ref_path)
                     pred_essays = load_multi_gec_file(pred_file)
 
                     language, corpus = extract_lang_corpus(ref_path)
-                    score = scorer.score(src_essays, pred_essays, batch_size=batch_size, verbose=verbose)
+                    if "icel2ec" in ref_path:
+                        batch_size = 1
+                    else:
+                        batch_size=4
+                    try:
+                        score = scorer.score(src_essays, pred_essays, batch_size=batch_size, verbose=verbose)
+                    except Exception as e:
+                        print(e,)
+                        continue
                     normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
                     print(f'Absolute: {score}  Normalized: {score / len(pred_essays):.4g}')
                     csv_writer.writerow([team_name, language, corpus, f'{normalized_score:.4g}'])
@@ -266,7 +282,7 @@ def get_parser():
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
     parser.add_argument('--access_token', default=None)
-    parser.add_argument('--team_name', default='team1')
+    parser.add_argument('--team_name', type=str, default='team1')
     parser.add_argument('--threshold', type=float, default=0.8)
     parser.add_argument('--batch_size', type=int, default=4)
     args = parser.parse_args()
