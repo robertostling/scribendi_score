@@ -175,15 +175,23 @@ def load_file(file_path: str) -> List[str]:
 def load_multi_gec_file(file_path: str) -> Dict[str, List[str]]:
     essays = {}
     current_essay_id = None
-    with open(file_path) as fp:
-        for line in fp:
-            line = line.strip()
-            if not line: continue
-            if line.startswith("### essay_id = "):
-                current_essay_id = line.split(" = ")[1]
-                essays[current_essay_id] = []
-            elif current_essay_id:
-                essays[current_essay_id].append(line)
+    if file_path.endswith(".md"):
+        with open(file_path) as fp:
+            for line in fp:
+                line = line.strip()
+                if not line: continue
+                if line.startswith("### essay_id = "):
+                    current_essay_id = line.split(" = ")[1]
+                    essays[current_essay_id] = []
+                elif current_essay_id:
+                    essays[current_essay_id].append(line)
+    elif file_path.endswith(".tmp"):
+        with open(file_path) as fp:
+            for line_id, line in enumerate(fp):
+                line = line.strip()
+                essays[line_id] = [line]
+    else:
+        raise Exception("wrong file format!")
     return essays
 
 
