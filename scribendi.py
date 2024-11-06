@@ -194,27 +194,60 @@ def load_multi_gec_file(file_path: str) -> Dict[str, List[str]]:
         raise Exception("wrong file format!")
     return essays
 
+def extract_lang_corpus(src_file):
+    """
+    Extract language and corpus from the src_file name.
+    Assumes src_file names follow the format:
+    <lang>-<corpus>-orig-dev.tmp
+    """
+    basename = os.path.basename(src_file)
+    parts = basename.split('-')
+    if len(parts) >= 2:
+        language = parts[0]
+        corpus = parts[1]
+        return language, corpus
+    return None, None
+
 
 def main(args):
-    if args.src is not None and args.pred is not None:
-        scorer = ScribendiScore(
-            model_id=args.model_id,
-            threshold=args.threshold,
-            no_cuda=args.no_cuda,
-            access_token=args.access_token
-        )
-        src_files = args.src.split(':')
-        pred_files = args.pred.split(':')
-        if len(src_files) == 1 and len(pred_files) > 1:
-            src_files = src_files * len(pred_files)
-        assert len(src_files) == len(pred_files)
-        for src_file, pred_file in zip(src_files, pred_files):
-            src_essays = load_multi_gec_file(src_file)
-            pred_essays = load_multi_gec_file(pred_file)
-            print(src_file, pred_file)
-            score = scorer.score(src_essays, pred_essays, batch_size=args.batch_size, verbose=args.verbose)
-            print(f'Absolute: {score}  Normalized: {score/len(pred_essays):.4g}')
-    
+    # Open the CSV file in append mode
+    with open('scorer_scribendi.csv', 'a', newline='') as csvfile:
+        # Define the CSV writer
+        csv_writer = csv.writer(csvfile)
+
+        # Write the header if the file is empty
+        if os.stat('scorer_scribendi.csv').st_size == 0:
+            csv_writer.writerow(['team_name', 'language', 'corpus', 'normalized_score'])
+
+        # Initialize the scorer if src and pred files are provided
+        if args.src is not None and args.pred is not None:
+            scorer = ScribendiScore(
+                model_id=args.model_id,
+                threshold=args.threshold,
+                no_cuda=args.no_cuda,
+                access_token=args.access_token
+            )
+            src_files = args.src.split(':')
+            pred_files = args.pred.split(':')
+            if len(src_files) == 1 and len(pred_files) > 1:
+                src_files = src_files * len(pred_files)
+            assert len(src_files) == len(pred_files)
+
+            for src_file, pred_file in zip(src_files, pred_files):
+                src_essays = load_multi_gec_file(src_file)
+                pred_essays = load_multi_gec_file(pred_file)
+
+                # Extract language and corpus from src_file
+                language, corpus = extract_lang_corpus(src_file)
+
+                # Calculate score
+                score = scorer.score(src_essays, pred_essays, batch_size=args.batch_size, verbose=args.verbose)
+                normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
+                print(f'Absolute: {score}  Normalized: {normalized_score:.4g}')
+
+                # Append the result to the CSV file
+                csv_writer.writerow([args.team_name, language, corpus, f'{normalized_score:.4g}'])
+
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -224,6 +257,7 @@ def get_parser():
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--model_id', default='meta-llama/Llama-3.1-8B')
     parser.add_argument('--access_token', default=None)
+    parser.add_argument('--team_name', default="team1")
     parser.add_argument('--threshold', type=float, default=0.8)
     parser.add_argument('--batch_size', type=int, default=4)
     args = parser.parse_args()
