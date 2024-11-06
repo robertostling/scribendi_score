@@ -231,7 +231,7 @@ def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, ver
         if os.stat(csv_path).st_size == 0:
             csv_writer.writerow(['team_name', 'language', 'corpus', 'normalized_score'])
 
-        for ref_file in os.listdir(ref_dir):
+        for ref_file in sorted(os.listdir(ref_dir)):
             if "orig" in ref_file and split in ref_file and ".tmp" in ref_file:
                 base_name = ref_file.replace("-orig-dev.tmp", "")
                 patterns = [
