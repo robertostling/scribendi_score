@@ -231,6 +231,7 @@ def process_directory_pairs(ref_dir, res_dir, team_name, scorer, batch_size, ver
                     language, corpus = extract_lang_corpus(ref_path)
                     score = scorer.score(src_essays, pred_essays, batch_size=batch_size, verbose=verbose)
                     normalized_score = score / len(pred_essays) if len(pred_essays) > 0 else 0
+                    print(f'Absolute: {score}  Normalized: {score / len(pred_essays):.4g}')
                     csv_writer.writerow([team_name, language, corpus, f'{normalized_score:.4g}'])
                 else:
                     print(f"Warning: Prediction file {pred_file} does not exist for {ref_file}")
